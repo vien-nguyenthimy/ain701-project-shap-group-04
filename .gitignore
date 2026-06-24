@@ -1,0 +1,13 @@
+# Các file rác của Python và hệ điều hành
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
+
+# Môi trường ảo (thường tên là venv hoặc .venv)
+venv/
+.venv/
+
+# File dữ liệu/kết quả lớn
+data/raw/*.csv
+models/
