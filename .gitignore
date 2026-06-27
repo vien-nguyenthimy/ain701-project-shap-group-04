@@ -10,4 +10,4 @@ venv/
 
 # File dữ liệu/kết quả lớn
 data/raw/*.csv
-models/
+/models/
