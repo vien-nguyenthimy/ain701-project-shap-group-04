@@ -1,7 +1,3 @@
-"""
-Module for loading raw data
-"""
-
 import pandas as pd
 import sys
 from pathlib import Path

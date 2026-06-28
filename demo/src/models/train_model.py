@@ -18,32 +18,39 @@ from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from catboost import CatBoostClassifier
+import json
+
+def get_project_root():
+    """Lấy project root một cách an toàn"""
+    try:
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parent.parent.parent  # demo/src/models → demo
+    except:
+        # Trường hợp chạy từ notebook hoặc trực tiếp
+        project_root = Path.cwd().parent if Path.cwd().name == "demo" else Path.cwd()
+    
+    return project_root
 
 def get_models():
     """Trả về danh sách các mô hình cần huấn luyện"""
     models = {
-        'XGBoost': XGBClassifier(n_estimators=200, max_depth=6, learning_rate=0.1, eval_metric='logloss', random_state=42, n_jobs=-1),
-        'LightGBM': LGBMClassifier(n_estimators=200, max_depth=6, learning_rate=0.1, random_state=42, n_jobs=-1, verbose=-1),
-        'CatBoost': CatBoostClassifier(iterations=200, depth=6, learning_rate=0.1, random_state=42, verbose=0),
-        'Random Forest': RandomForestClassifier(n_estimators=200, max_depth=10, random_state=42, n_jobs=-1),
-        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42, n_jobs=-1),
-        'Decision Tree': DecisionTreeClassifier(max_depth=10, random_state=42)
+        'XGBoost': XGBClassifier(n_estimators=1000, max_depth=6, learning_rate=0.05, eval_metric='logloss', random_state=42, n_jobs=-1),
+        'LightGBM': LGBMClassifier(n_estimators=1000, max_depth=6, learning_rate=0.05, random_state=42, n_jobs=-1, verbose=-1),
+        'CatBoost': CatBoostClassifier(iterations=1000, depth=6, learning_rate=0.05, random_state=42, verbose=0),
     }
-    return models
 
+    return models
 
 def train_single_model(model, X_train, y_train):
     """Huấn luyện 1 mô hình và đo thời gian"""
     start = time.time()
     model.fit(X_train, y_train)
     elapsed = time.time() - start
-    
-    print(f"Training completed in {elapsed:.2f} seconds")
+    print(f"Training {type(model).__name__} completed in {elapsed:.2f} seconds")
     return model, elapsed
 
 
 def evaluate_model(model, X_test, y_test):
-    """Đánh giá mô hình với các chỉ số"""
     y_pred = model.predict(X_test)
     y_prob = model.predict_proba(X_test)[:, 1]
     
@@ -54,14 +61,9 @@ def evaluate_model(model, X_test, y_test):
         'F1-Score': f1_score(y_test, y_pred),
         'ROC-AUC': roc_auc_score(y_test, y_prob)
     }
-    
     metrics = {k: round(v, 4) for k, v in metrics.items()}
     
-    cm = confusion_matrix(y_test, y_pred)
-    
-    fpr, tpr, _ = roc_curve(y_test, y_prob)
-    
-    return metrics, cm, (fpr, tpr)
+    return metrics, confusion_matrix(y_test, y_pred), roc_curve(y_test, y_prob)
 
 
 def train_all_models(X_train, y_train, X_test, y_test, verbose=True):
@@ -72,19 +74,14 @@ def train_all_models(X_train, y_train, X_test, y_test, verbose=True):
     
     for name, model in models.items():
         print(f"\nTraining {name}...")
-        
-        # Huấn luyện
         trained_model, elapsed = train_single_model(model, X_train, y_train)
-        
-        # Đánh giá
         metrics, cm, roc = evaluate_model(trained_model, X_test, y_test)
-        
-        # Lưu kết quả
         results[name] = {'model': trained_model, 'metrics': metrics, 'confusion_matrix': cm, 'training_time': elapsed}
         roc_data[name] = roc
         
         print(f"AUC={metrics['ROC-AUC']} | F1={metrics['F1-Score']} | Time={elapsed:.1f}s")
-    print("Đã huấn luyện tất cả các mô hình")
+    
+    print("\nĐã huấn luyện tất cả các mô hình")
     
     return results, roc_data
 
@@ -95,40 +92,50 @@ def get_results_summary(results):
     
     for name, result in results.items():
         metrics = result['metrics']
-        summary_data.append({'Model': name, 'Accuracy': metrics['Accuracy'], 'Precision': metrics['Precision'], 'Recall': metrics['Recall'], 'F1-Score': metrics['F1-Score'], 'ROC-AUC': metrics['ROC-AUC'], 'Time (s)': round(result['training_time'], 2)})
+        summary_data.append({'Model': name, 
+                             'Accuracy': metrics['Accuracy'], 
+                             'Precision': metrics['Precision'], 
+                             'Recall': metrics['Recall'], 
+                             'F1-Score': metrics['F1-Score'], 
+                             'ROC-AUC': metrics['ROC-AUC'], 
+                             'Time (s)': round(result['training_time'], 2)
+        })
     
-    summary_df = pd.DataFrame(summary_data)
-    summary_df = summary_df.sort_values('F1-Score', ascending=False)
-    
-    return summary_df
+    df = pd.DataFrame(summary_data)
+    return df.sort_values('F1-Score', ascending=False)
 
 
-def save_model(model, model_name, save_dir='src/models'):
-    """Lưu mô hình ra file"""
-    save_path = Path(save_dir)
-    save_path.mkdir(parents=True, exist_ok=True)
+def save_model(model, model_name):
+    """Lưu model vào đúng thư mục src/models"""
+    project_root = get_project_root()
+    save_dir = project_root / "data" / "models"
+    save_dir.mkdir(parents=True, exist_ok=True)
     
-    file_path = save_path / f"{model_name.replace(' ', '_').lower()}.pkl"
+    file_path = save_dir / f"{model_name.lower().replace(' ', '_')}.pkl"
     joblib.dump(model, file_path)
-    print(f"Model saved to {file_path}")
-    
     return file_path
 
 
-def save_all_models(results, save_dir='src/models'):
+def save_all_models(results):
+    """Lưu tất cả models"""
     for name, result in results.items():
-        save_model(result['model'], name, save_dir)
+        save_model(result['model'], name)
     
     print("\nĐã lưu tất cả các mô hình")
 
-def save_results_summary(results, save_path='demo/src/reports/files/model_results.csv'):
-    """Lưu kết quả đánh giá mô hình vào file CSV"""
-    summary_df = get_results_summary(results)
+
+def save_results_summary(results, save_path=None):
+    """Lưu bảng so sánh kết quả"""
+    project_root = get_project_root()
+    
+    if save_path is None:
+        save_path = project_root / 'src' / 'reports' / 'model_results.csv'
+    
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     
+    summary_df = get_results_summary(results)
     summary_df.to_csv(save_path, index=False)
-    print(f"Results saved to {save_path}")
-    
+
     return summary_df
 
 
@@ -154,8 +161,6 @@ def train_and_save_pipeline(X_train, y_train, X_test, y_test, save_models=True):
     
     #Tạo bảng so sánh
     summary_df = get_results_summary(results)
-
-    print(summary_df.to_string(index=False))
     
     # Save results
     save_results_summary(results)
