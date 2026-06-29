@@ -22,8 +22,8 @@ def get_top_features(shap_values, X_input, feature_names, top_n=8):
     return importance.sort_values('abs_shap', ascending=False).head(top_n)
 
 
-def build_explanation_prompt(result: dict, top_features) -> str:
-    """Xây prompt từ kết quả predict_loan() + get_top_features_for_case()."""
+def build_explanation_prompt(result: dict, top_features, raw_input: dict) -> str:
+    """Xây prompt từ kết quả predict_loan() + get_top_features_for_case() + raw_input."""
     # Dịch tên cột sang tiếng Việt để LLM đọc hiểu tự nhiên hơn
     feature_translate = {
         'Age': 'Độ tuổi', 'Income': 'Thu nhập', 'LoanAmount': 'Số tiền vay',
@@ -35,6 +35,13 @@ def build_explanation_prompt(result: dict, top_features) -> str:
         'HasDependents': 'Có người phụ thuộc', 'LoanPurpose': 'Mục đích vay',
         'HasCoSigner': 'Có người bảo lãnh'
     }
+
+    # Format full profile
+    profile_lines = []
+    for k, v in raw_input.items():
+        feat_vn = feature_translate.get(k, k)
+        profile_lines.append(f"- {feat_vn}: {v}")
+    profile_text = "\n".join(profile_lines)
 
     feature_lines = []
     for _, row in top_features.iterrows():
@@ -49,9 +56,12 @@ def build_explanation_prompt(result: dict, top_features) -> str:
 Hệ thống vừa đánh giá hồ sơ vay của khách hàng với kết quả:
 
 - Quyết định: {status_vn}
-- Tỷ lệ rủi ro hệ thống đánh giá: {result['probability_default']:.1%}
+- Tỷ lệ rủi ro hệ thống đánh giá: {result['probability_default']:.1%} (Ngưỡng tiêu chuẩn an toàn tối đa của ngân hàng: {result['threshold_used']:.1%})
 
-Các yếu tố chính dẫn đến quyết định này (dựa trên phân tích dữ liệu):
+Hồ sơ tài chính chi tiết của khách hàng:
+{profile_text}
+
+Các yếu tố chính dẫn đến quyết định này (dựa trên phân tích dữ liệu quan trọng nhất):
 {feature_text}
 
 Nhiệm vụ của bạn:
@@ -70,7 +80,7 @@ Lưu ý:
 - Tuyệt đối KHÔNG dùng các từ ngữ kỹ thuật như "AI", "SHAP", "Model", "Log-odds", "Feature", "Tăng/giảm rủi ro"."""
 
 
-def generate_explanation(prompt: str, model_name: str = "gemini-3.5-flash") -> str:
+def generate_explanation(prompt: str, model_name: str = "gemini-2.5-flash") -> str:
     """Gọi Gemini API, trả về đoạn giải thích."""
     response = client.models.generate_content(
         model=model_name, 
@@ -79,7 +89,7 @@ def generate_explanation(prompt: str, model_name: str = "gemini-3.5-flash") -> s
     )
     return response.text
 
-def explain_loan_decision(result: dict, top_features) -> str:
+def explain_loan_decision(result: dict, top_features, raw_input: dict) -> str:
     """Hàm tổng — dùng trong app.py: result, top_features có sẵn từ predict_model.py + shap_analysis.py"""
-    prompt = build_explanation_prompt(result, top_features)
+    prompt = build_explanation_prompt(result, top_features, raw_input)
     return generate_explanation(prompt)

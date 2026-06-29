@@ -75,10 +75,7 @@ if predict_btn:
             shap_values = explainer.shap_values(X_input)
             top_features = get_top_features_for_case(shap_values, X_input, idx=0, top_n=5)
             
-            # 3. LLM Giải thích
-            explanation = explain_loan_decision(result, top_features)
-            
-            # Hiển thị kết quả
+            # Hiển thị kết quả (luôn hiển thị dù AI có lỗi hay không)
             st.subheader("📊 Kết quả Phân tích")
             
             col1, col2 = st.columns(2)
@@ -87,11 +84,17 @@ if predict_btn:
                 st.markdown(f"**Quyết định:** <span style='color:{status_color}; font-size:20px'>{result['status']}</span>", unsafe_allow_html=True)
                 
             with col2:
-                st.markdown(f"**Xác suất vỡ nợ:** `{result['probability_default']:.1%}`")
+                st.markdown(f"**Xác suất vỡ nợ:** `{result['probability_default']:.1%}` *(Ngưỡng an toàn: < {result['threshold_used']:.1%})*")
             
             st.markdown("---")
+            
+            # 3. LLM Giải thích (Có thể lỗi do API)
             st.subheader("💡 Giải thích từ AI")
-            st.info(explanation)
+            try:
+                explanation = explain_loan_decision(result, top_features, raw_input)
+                st.info(explanation)
+            except Exception as llm_err:
+                st.warning(f"⚠️ Hệ thống AI giải thích đang tạm thời quá tải hoặc lỗi API Google (Chi tiết: {llm_err}). Quý khách vui lòng thử lại sau ít phút!")
             
             with st.expander("🔍 Chi tiết Top 5 yếu tố ảnh hưởng (SHAP)"):
                 st.dataframe(top_features)
