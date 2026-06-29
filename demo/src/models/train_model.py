@@ -31,12 +31,20 @@ def get_project_root():
     
     return project_root
 
-def get_models():
+def get_models(y_train):
     """Trả về danh sách các mô hình cần huấn luyện"""
+    neg = (y_train == 0).sum()  # Số lượng non-default
+    pos = (y_train == 1).sum()  # Số lượng default
+    scale_pos_weight = neg / pos
+    print(f"Class 0 (Non-Default): {neg:,}")
+    print(f"Class 1 (Default): {pos:,}")
+    print(f"Scale_pos_weight: {scale_pos_weight:.2f}")
+
     models = {
-        'XGBoost': XGBClassifier(n_estimators=1000, max_depth=6, learning_rate=0.05, eval_metric='logloss', random_state=42, n_jobs=-1),
-        'LightGBM': LGBMClassifier(n_estimators=1000, max_depth=6, learning_rate=0.05, random_state=42, n_jobs=-1, verbose=-1),
-        'CatBoost': CatBoostClassifier(iterations=1000, depth=6, learning_rate=0.05, random_state=42, verbose=0),
+        'XGBoost': XGBClassifier(n_estimators=1000, max_depth=6, learning_rate=0.05, eval_metric='logloss', random_state=42, n_jobs=-1, scale_pos_weight = scale_pos_weight),
+        'LightGBM': LGBMClassifier(n_estimators=1000, max_depth=6, learning_rate=0.05, random_state=42, n_jobs=-1, verbose=-1, is_unbalance=True),
+        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42, n_jobs=-1, class_weight='balanced'),
+        'Decision Tree': DecisionTreeClassifier(max_depth=10, random_state=42, class_weight='balanced'),
     }
 
     return models
@@ -68,7 +76,7 @@ def evaluate_model(model, X_test, y_test):
 
 def train_all_models(X_train, y_train, X_test, y_test, verbose=True):
     """Huấn luyện tất cả mô hình và lưu kết quả"""
-    models = get_models()
+    models = get_models(y_train)
     results = {}
     roc_data = {}
     
@@ -106,7 +114,6 @@ def get_results_summary(results):
 
 
 def save_model(model, model_name):
-    """Lưu model vào đúng thư mục src/models"""
     project_root = get_project_root()
     save_dir = project_root / "data" / "models"
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -169,7 +176,4 @@ def train_and_save_pipeline(X_train, y_train, X_test, y_test, save_models=True):
     if save_models:
         save_all_models(results)
     
-    # Get best model
-    best_model_name, best_model, best_metrics = get_best_model(results)
-    
-    return results, summary_df, best_model_name, best_model, roc_data
+    return results, summary_df, roc_data
